@@ -1,0 +1,66 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: xinyu-postgres
+    environment:
+      POSTGRES_DB: xinyu_ai
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d xinyu_ai"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: xinyu-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  server:
+    build:
+      context: ./server
+    container_name: xinyu-server
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    environment:
+      APP_PORT: "3000"
+      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/xinyu_ai?schema=public"
+      REDIS_URL: "redis://redis:6379"
+      JWT_SECRET: "replace-with-access-secret"
+      JWT_REFRESH_SECRET: "replace-with-refresh-secret"
+      ACCESS_TOKEN_TTL: "15m"
+      REFRESH_TOKEN_TTL: "30d"
+      AI_API_BASE_URL: "https://api.openai.com/v1"
+      AI_API_KEY: ""
+      AI_MODEL: "gpt-4o-mini"
+      AI_TEMPERATURE: "0.7"
+      AI_MAX_TOKENS: "700"
+      ADMIN_DEV_ALLOW_ALL: "true"
+    ports:
+      - "3000:3000"
+
+  admin-web:
+    build:
+      context: ./admin-web
+      args:
+        NEXT_PUBLIC_API_BASE_URL: "http://localhost:3000"
+    container_name: xinyu-admin-web
+    depends_on:
+      - server
+    ports:
+      - "3001:3001"
+
+volumes:
+  postgres_data:
+  redis_data:

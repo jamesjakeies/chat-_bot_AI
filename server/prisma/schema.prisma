@@ -1,0 +1,396 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MembershipLevel {
+  FREE
+  MONTHLY
+  PREMIUM
+}
+
+enum RoleCategory {
+  EMOTIONAL_SUPPORT
+  ROMANTIC_COMPANION
+  SLEEP_COMPANION
+  STUDY_BUDDY
+  CAREER_MENTOR
+  CUSTOM_ROLE
+}
+
+enum RelationshipType {
+  LISTENER
+  SUPPORT_PARTNER
+  ROMANTIC_PARTNER
+  VIRTUAL_BOYFRIEND
+  VIRTUAL_GIRLFRIEND
+  BEDTIME_COMPANION
+  STUDY_BUDDY
+  CAREER_MENTOR
+  CUSTOM
+}
+
+enum RoleSafetyLevel {
+  LOW
+  MEDIUM
+  HIGH
+  STRICT
+}
+
+enum RoleStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+  BLOCKED
+}
+
+enum SenderType {
+  USER
+  AI
+  SYSTEM
+}
+
+enum RiskLevel {
+  NORMAL
+  ATTENTION
+  CRISIS
+}
+
+enum MemoryType {
+  PREFERENCE
+  CHAT_STYLE
+  GOAL
+  ROUTINE
+  STRESSOR
+  MENTAL_HEALTH
+  MEDICAL
+  FAMILY
+  RELATIONSHIP
+  FINANCE
+  IDENTITY
+  LOCATION
+  OTHER
+}
+
+enum SensitivityLevel {
+  NORMAL
+  SENSITIVE
+  HIGHLY_SENSITIVE
+}
+
+enum SafetyEventType {
+  SELF_HARM_LOW
+  SELF_HARM_HIGH
+  VIOLENCE
+  ILLEGAL
+  SEXUAL
+  MINOR_ROMANTIC
+  DEPENDENCY_RISK
+  NORMAL
+}
+
+enum SafetyAction {
+  ALLOW
+  WARN
+  SWITCH_TO_CRISIS_MODE
+  BLOCK
+}
+
+enum SubscriptionPlan {
+  FREE
+  MONTHLY
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRED
+  CANCELED
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  REJECTED
+}
+
+model User {
+  id               String            @id @default(cuid())
+  email            String?           @unique
+  phone            String?           @unique
+  passwordHash     String
+  nickname         String
+  birthYear        Int?
+  ageVerified      Boolean           @default(false)
+  isMinor          Boolean           @default(false)
+  guardianConsent  Boolean           @default(false)
+  membershipLevel  MembershipLevel   @default(FREE)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  deletedAt        DateTime?
+  createdRoles     Role[]            @relation("RoleCreatedBy")
+  userRoles        UserRole[]
+  chatSessions     ChatSession[]
+  memories         Memory[]
+  moodLogs         MoodLog[]
+  safetyEvents     SafetyEvent[]
+  subscriptions    Subscription[]
+  usageLogs        UsageLog[]
+  reports          Report[]
+  reviewedReports  Report[]          @relation("ReportsReviewedBy")
+  adminAuditLogs   AdminAuditLog[]   @relation("AdminAuditActor")
+  refreshTokens    RefreshToken[]
+
+  @@index([membershipLevel])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model Role {
+  id               String            @id @default(cuid())
+  name             String
+  avatarUrl        String?
+  category         RoleCategory
+  relationshipType RelationshipType
+  personality      String
+  speechStyle      String
+  systemPrompt     String
+  safetyLevel      RoleSafetyLevel
+  isAdultOnly      Boolean           @default(false)
+  isOfficial       Boolean           @default(false)
+  createdByUserId  String?
+  status           RoleStatus        @default(ACTIVE)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  deletedAt        DateTime?
+  createdByUser    User?             @relation("RoleCreatedBy", fields: [createdByUserId], references: [id])
+  userRoles        UserRole[]
+  chatSessions     ChatSession[]
+  memories         Memory[]
+
+  @@index([category, status])
+  @@index([createdByUserId])
+  @@index([deletedAt])
+  @@map("roles")
+}
+
+model UserRole {
+  id                String   @id @default(cuid())
+  userId            String
+  roleId            String
+  nicknameForUser   String?
+  intimacyLevel     Int      @default(0)
+  memoryEnabled     Boolean  @default(true)
+  lastInteractionAt DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  deletedAt         DateTime?
+  user              User     @relation(fields: [userId], references: [id])
+  role              Role     @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, roleId])
+  @@index([userId, lastInteractionAt])
+  @@index([roleId])
+  @@index([deletedAt])
+  @@map("user_roles")
+}
+
+model ChatSession {
+  id         String        @id @default(cuid())
+  userId     String
+  roleId     String
+  title      String
+  riskLevel  RiskLevel     @default(NORMAL)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+  deletedAt  DateTime?
+  user       User          @relation(fields: [userId], references: [id])
+  role       Role          @relation(fields: [roleId], references: [id])
+  messages   ChatMessage[]
+  safetyEvents SafetyEvent[]
+
+  @@index([userId, updatedAt])
+  @@index([roleId])
+  @@index([deletedAt])
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id             String        @id @default(cuid())
+  sessionId      String
+  senderType     SenderType
+  content        String
+  safetyLabel    SafetyEventType?
+  tokenCount     Int?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+  session        ChatSession   @relation(fields: [sessionId], references: [id])
+  memories       Memory[]      @relation("MemorySourceMessage")
+  safetyEvents   SafetyEvent[]
+  reports        Report[]
+
+  @@index([sessionId, createdAt])
+  @@index([deletedAt])
+  @@map("chat_messages")
+}
+
+model Memory {
+  id               String            @id @default(cuid())
+  userId           String
+  roleId           String
+  memoryType       MemoryType
+  content          String
+  sensitivityLevel SensitivityLevel  @default(NORMAL)
+  userConsented    Boolean           @default(false)
+  sourceMessageId  String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  deletedAt        DateTime?
+  user             User              @relation(fields: [userId], references: [id])
+  role             Role              @relation(fields: [roleId], references: [id])
+  sourceMessage    ChatMessage?      @relation("MemorySourceMessage", fields: [sourceMessageId], references: [id])
+
+  @@index([userId, roleId, createdAt])
+  @@index([sourceMessageId])
+  @@index([deletedAt])
+  @@map("memories")
+}
+
+model MoodLog {
+  id              String   @id @default(cuid())
+  userId          String
+  moodScore       Int
+  moodLabel       String
+  pressureSources String[] @default([])
+  note            String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+  user            User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([deletedAt])
+  @@map("mood_logs")
+}
+
+model SafetyEvent {
+  id          String           @id @default(cuid())
+  userId      String
+  sessionId   String?
+  messageId   String?
+  eventType   SafetyEventType
+  riskLevel   RiskLevel
+  actionTaken SafetyAction
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  deletedAt   DateTime?
+  user        User             @relation(fields: [userId], references: [id])
+  session     ChatSession?     @relation(fields: [sessionId], references: [id])
+  message     ChatMessage?     @relation(fields: [messageId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([sessionId])
+  @@index([messageId])
+  @@index([deletedAt])
+  @@map("safety_events")
+}
+
+model Subscription {
+  id         String             @id @default(cuid())
+  userId     String
+  plan       SubscriptionPlan
+  status     SubscriptionStatus
+  startedAt  DateTime
+  expiresAt  DateTime?
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  deletedAt  DateTime?
+  user       User               @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+  @@index([deletedAt])
+  @@map("subscriptions")
+}
+
+model UsageLog {
+  id           String   @id @default(cuid())
+  userId       String?
+  action       String
+  model        String?
+  inputTokens  Int?
+  outputTokens Int?
+  costEstimate Decimal? @db.Decimal(10, 4)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+  user         User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@index([deletedAt])
+  @@map("usage_logs")
+}
+
+model Report {
+  id         String       @id @default(cuid())
+  userId     String
+  messageId  String
+  reason     String
+  status     ReportStatus @default(PENDING)
+  reviewNote String?
+  reviewedAt DateTime?
+  reviewedByUserId String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  deletedAt  DateTime?
+  user       User         @relation(fields: [userId], references: [id])
+  message    ChatMessage  @relation(fields: [messageId], references: [id])
+  reviewedBy User?        @relation("ReportsReviewedBy", fields: [reviewedByUserId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([messageId])
+  @@index([status, createdAt])
+  @@index([reviewedByUserId])
+  @@index([deletedAt])
+  @@map("reports")
+}
+
+model AdminAuditLog {
+  id          String   @id @default(cuid())
+  adminUserId String
+  action      String
+  targetType  String
+  targetId    String?
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+  adminUser   User     @relation("AdminAuditActor", fields: [adminUserId], references: [id])
+
+  @@index([adminUserId, createdAt])
+  @@index([action, createdAt])
+  @@index([targetType, targetId])
+  @@index([deletedAt])
+  @@map("admin_audit_logs")
+}
+
+model RefreshToken {
+  id         String   @id
+  userId     String
+  tokenHash  String
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, expiresAt])
+  @@index([revokedAt])
+  @@map("refresh_tokens")
+}
